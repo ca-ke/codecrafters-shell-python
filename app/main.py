@@ -1,3 +1,4 @@
+from ast import arg
 import sys
 
 
@@ -6,11 +7,17 @@ def main():
     while True:
         sys.stdout.write("$ ")
         sys.stdout.flush()
-        command = input()
-        if command == "exit 0":
-            break
+        splittedInput = input().split(" ")
+        command = splittedInput[0]
+        arguments = " ".join(splittedInput[1:])
 
-        print(f"{command}: command not found")
+        if command == "exit":
+            break
+        elif command == "echo":
+            sys.stdout.write(arguments)
+            sys.stdout.write("\n")
+        else:
+            print(f"{command}: command not found")
 
 
 if __name__ == "__main__":
