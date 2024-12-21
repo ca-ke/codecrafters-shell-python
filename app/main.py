@@ -1,43 +1,64 @@
 import sys
 import os
+import glob
+
+from os.path import basename, isfile
+from typing import Dict
+from subprocess import call
+from typing import List
+
+
+def get_executables() -> Dict[str, str]:
+    executables = {}
+
+    for directory in os.environ["PATH"].split(":"):
+        for executable in glob.glob(directory + "/*"):
+            if isfile(executable) and basename(executable) not in executables:
+                if os.access(executable, os.X_OK):
+                    executables[basename(executable)] = directory
+    return executables
+
+
+def exec(command: str, arguments: List[str]):
+    arguments_stringfied = " ".join(arguments)
+    call(f"{command} {arguments_stringfied}", shell=True)
 
 
 def main():
     while True:
-        sys.stdout.write("$ ")
-        sys.stdout.flush()
-        splitted_input = input().split(" ")
-        command = splitted_input[0]
-        arguments = " ".join(splitted_input[1:])
-        path_variable = os.environ["PATH"]
         builtin_commands = {"echo", "exit", "type"}
+        line = input("$ ").split(" ")
+        executables = get_executables()
 
-        if command == "exit":
-            break
-        elif command == "echo":
-            sys.stdout.write(arguments)
-        elif command == "type":
-            if arguments in builtin_commands:
-                sys.stdout.write(f"{arguments} is a shell builtin")
-            else:
-                folders = path_variable.split(":")
-                found = False
-                for folder in reversed(folders):
-                    try:
-                        dir_contents = [
-                            x for x in os.listdir(folder) if x.startswith(arguments)
-                        ]
-                        if dir_contents:
-                            sys.stdout.write(f"{arguments} is {folder}/{arguments}")
-                            found = True
-                            break
-                    except FileNotFoundError:
-                        found = False
-                if not found:
-                    sys.stdout.write(f"{arguments}: not found")
+        if not line:
+            sys.stdout.write("You shall not pass!")
         else:
-            sys.stdout.write(f"{command}: command not found")
-        sys.stdout.write("\n")
+            command, arguments = line[0], line[1:]
+            if command == "exit":
+                return_code = int(arguments[0]) if arguments else 0
+                exit(return_code)
+            elif command == "echo":
+                sys.stdout.write(" ".join(arguments))
+                sys.stdout.write("\n")
+            elif command == "type":
+                target = arguments[0]
+                if target in builtin_commands:
+                    sys.stdout.write(f"{target} is a shell builtin")
+                    sys.stdout.write("\n")
+                else:
+                    directory = executables.get(target)
+
+                    if directory:
+                        print(f"{target} is {directory}/{target}")
+                    else:
+                        print(f"{target}: not found")
+            else:
+                directory = executables.get(command)
+
+                if directory:
+                    exec(directory + "/" + command, arguments)
+                else:
+                    print(f"{command}: command not found")
 
 
 if __name__ == "__main__":
