@@ -24,6 +24,14 @@ def contains_single_quotes(input_string: str) -> bool:
     return bool(re.search(r"'", input_string))
 
 
+def contains_double_quotes(input_string: str) -> bool:
+    return bool(re.search(r"\"", input_string))
+
+
+def handle_escape_sequences(input_string: str) -> str:
+    return re.sub(r'\\(["\\$])', r"\1", input_string)
+
+
 def exec(command: str, arguments: List[str]):
     arguments_stringfied = " ".join(arguments)
     call(f"{command} {arguments_stringfied}", shell=True)
@@ -48,7 +56,13 @@ def main():
                 exit(return_code)
             elif command == "echo":
                 input_string = " ".join(arguments)
-                if contains_single_quotes(input_string):
+                if contains_double_quotes(input_string):
+                    quoted_parts = re.findall(r'"([^"]*)"', input_string)
+                    quoted_parts_double = [
+                        handle_escape_sequences(part) for part in quoted_parts
+                    ]
+                    sys.stdout.write(" ".join(quoted_parts_double) + "\n")
+                elif contains_single_quotes(input_string):
                     quoted_parts = re.findall(r"'([^']*)'", input_string)
                     sys.stdout.write(" ".join(quoted_parts) + "\n")
                 else:
