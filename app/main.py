@@ -1,6 +1,7 @@
 import sys
 import os
 import glob
+import re
 
 from os.path import basename, expanduser, isfile
 from typing import Dict
@@ -19,6 +20,10 @@ def get_executables() -> Dict[str, str]:
     return executables
 
 
+def contains_single_quotes(input_string: str) -> bool:
+    return bool(re.search(r"'", input_string))
+
+
 def exec(command: str, arguments: List[str]):
     arguments_stringfied = " ".join(arguments)
     call(f"{command} {arguments_stringfied}", shell=True)
@@ -33,13 +38,21 @@ def main():
         if not line:
             sys.stdout.write("You shall not pass!")
         else:
-            command, arguments = line[0], line[1:]
+            command, arguments = (
+                line[0],
+                line[1:],
+            )
+
             if command == "exit":
                 return_code = int(arguments[0]) if arguments else 0
                 exit(return_code)
             elif command == "echo":
-                sys.stdout.write(" ".join(arguments))
-                sys.stdout.write("\n")
+                input_string = " ".join(arguments)
+                if contains_single_quotes(input_string):
+                    quoted_parts = re.findall(r"'([^']*)'", input_string)
+                    sys.stdout.write(" ".join(quoted_parts) + "\n")
+                else:
+                    sys.stdout.write(" ".join(" ".join(arguments).split()) + "\n")
             elif command == "pwd":
                 sys.stdout.write(os.getcwd())
                 sys.stdout.write("\n")
