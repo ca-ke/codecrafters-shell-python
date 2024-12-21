@@ -2,7 +2,7 @@ import sys
 import os
 import glob
 
-from os.path import basename, isfile
+from os.path import basename, expanduser, isfile
 from typing import Dict
 from subprocess import call
 from typing import List
@@ -26,7 +26,7 @@ def exec(command: str, arguments: List[str]):
 
 def main():
     while True:
-        builtin_commands = {"echo", "exit", "type", "pwd"}
+        builtin_commands = {"echo", "exit", "type", "pwd", "cd"}
         line = input("$ ").split(" ")
         executables = get_executables()
 
@@ -43,6 +43,13 @@ def main():
             elif command == "pwd":
                 sys.stdout.write(os.getcwd())
                 sys.stdout.write("\n")
+            elif command == "cd":
+                directory = arguments[0]
+                try:
+                    os.chdir(expanduser(directory))
+                except FileNotFoundError:
+                    sys.stdout.write(f"cd: {directory}: No such file or directory")
+                    sys.stdout.write("\n")
             elif command == "type":
                 target = arguments[0]
                 if target in builtin_commands:
