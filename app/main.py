@@ -26,7 +26,7 @@ def exec(command: str, arguments: List[str]):
 
 def main():
     while True:
-        builtin_commands = {"echo", "exit", "type"}
+        builtin_commands = {"echo", "exit", "type", "pwd"}
         line = input("$ ").split(" ")
         executables = get_executables()
 
@@ -39,6 +39,9 @@ def main():
                 exit(return_code)
             elif command == "echo":
                 sys.stdout.write(" ".join(arguments))
+                sys.stdout.write("\n")
+            elif command == "pwd":
+                sys.stdout.write(os.getcwd())
                 sys.stdout.write("\n")
             elif command == "type":
                 target = arguments[0]
