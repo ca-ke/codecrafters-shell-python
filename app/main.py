@@ -8,6 +8,8 @@ from typing import Dict
 from subprocess import call
 from typing import List
 
+from tokenizer import Tokenizer
+
 
 def get_executables() -> Dict[str, str]:
     executables = {}
@@ -28,8 +30,28 @@ def contains_double_quotes(input_string: str) -> bool:
     return bool(re.search(r"\"", input_string))
 
 
-def handle_escape_sequences(input_string: str) -> str:
-    return re.sub(r'\\(["\\$])', r"\1", input_string)
+def handle_escape_sequences(input_string):
+    result = []
+    i = 0
+    while i < len(input_string):
+        if input_string[i] == "\\":
+            if i + 1 < len(input_string):
+                if input_string[i + 1] in ["\\", '"', "'"]:
+                    result.append(input_string[i + 1])
+                    i += 2
+                elif input_string[i + 1] == " ":
+                    result.append(" ")
+                    i += 2
+                else:
+                    result.append("\\")
+                    i += 1
+            else:
+                result.append("\\")
+                i += 1
+        else:
+            result.append(input_string[i])
+            i += 1
+    return "".join(result)
 
 
 def exec(command: str, arguments: List[str]):
@@ -40,33 +62,39 @@ def exec(command: str, arguments: List[str]):
 def main():
     while True:
         builtin_commands = {"echo", "exit", "type", "pwd", "cd"}
-        line = input("$ ").split(" ")
+        line = input("$ ")
+        tokenizer = Tokenizer(line).parse()
         executables = get_executables()
 
         if not line:
             sys.stdout.write("You shall not pass!")
         else:
             command, arguments = (
-                line[0],
-                line[1:],
+                tokenizer[0],
+                tokenizer[1:],
             )
-
             if command == "exit":
                 return_code = int(arguments[0]) if arguments else 0
                 exit(return_code)
             elif command == "echo":
                 input_string = " ".join(arguments)
                 if contains_double_quotes(input_string):
-                    quoted_parts = re.findall(r'"([^"]*)"', input_string)
+                    quoted_parts = re.findall(r'"(.*?)(?<!\\)"', input_string)
                     quoted_parts_double = [
                         handle_escape_sequences(part) for part in quoted_parts
                     ]
                     sys.stdout.write(" ".join(quoted_parts_double) + "\n")
                 elif contains_single_quotes(input_string):
-                    quoted_parts = re.findall(r"'([^']*)'", input_string)
-                    sys.stdout.write(" ".join(quoted_parts) + "\n")
+                    quoted_parts = re.findall(r"'(.*?)(?<!\\)'", input_string)
+                    quoted_parts_single = [
+                        handle_escape_sequences(part) for part in quoted_parts
+                    ]
+                    sys.stdout.write(" ".join(quoted_parts_single) + "\n")
                 else:
-                    sys.stdout.write(" ".join(" ".join(arguments).split()) + "\n")
+                    parsed_arguments = [
+                        handle_escape_sequences(arg) for arg in arguments
+                    ]
+                    sys.stdout.write(" ".join(parsed_arguments) + "\n")
             elif command == "pwd":
                 sys.stdout.write(os.getcwd())
                 sys.stdout.write("\n")
