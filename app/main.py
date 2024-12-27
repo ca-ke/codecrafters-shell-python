@@ -8,7 +8,75 @@ from typing import Dict
 from subprocess import call
 from typing import List
 
-from tokenizer import Tokenizer
+
+class Tokenizer:
+    def __init__(self, line: str):
+        self.line = line
+        self.position = 0
+        self.in_single_quotes = False
+        self.in_double_quotes = False
+        self.current_token_chars = []
+
+    def parse(self) -> List[str]:
+        tokens = []
+        while self.position < len(self.line):
+            char = self.line[self.position]
+            self.position += 1
+
+            if self.in_single_quotes:
+                if char == "'":
+                    self.in_single_quotes = False
+                else:
+                    self.current_token_chars.append(char)
+
+            elif self.in_double_quotes:
+                if char == '"':
+                    self.in_double_quotes = False
+                elif char == "\\":
+                    if self._peek() in ['"', "\\", "$"]:
+                        escaped_char = self._next_char()
+                        self.current_token_chars.append(escaped_char)
+                    else:
+                        self.current_token_chars.append(char)
+                else:
+                    self.current_token_chars.append(char)
+
+            else:
+                if char == "'":
+                    self.in_single_quotes = True
+                elif char == '"':
+                    self.in_double_quotes = True
+                elif char == "\\":
+                    if self._peek():
+                        self.current_token_chars.append(self._next_char())
+                    else:
+                        self.current_token_chars.append(char)
+                elif char.isspace():
+                    self._finalize_token(tokens)
+                else:
+                    self.current_token_chars.append(char)
+
+        self._finalize_token(tokens)
+        return tokens
+
+    def _finalize_token(self, tokens: List[str]):
+        if self.current_token_chars:
+            tokens.append("".join(self.current_token_chars))
+            self.current_token_chars = []
+
+    def _peek(self) -> str:
+        """Look at the next character without advancing position."""
+        if self.position < len(self.line):
+            return self.line[self.position]
+        return ""
+
+    def _next_char(self) -> str:
+        """Consume and return the next character in the string."""
+        if self.position < len(self.line):
+            ch = self.line[self.position]
+            self.position += 1
+            return ch
+        return ""
 
 
 def get_executables() -> Dict[str, str]:
@@ -20,38 +88,6 @@ def get_executables() -> Dict[str, str]:
                 if os.access(executable, os.X_OK):
                     executables[basename(executable)] = directory
     return executables
-
-
-def contains_single_quotes(input_string: str) -> bool:
-    return bool(re.search(r"'", input_string))
-
-
-def contains_double_quotes(input_string: str) -> bool:
-    return bool(re.search(r"\"", input_string))
-
-
-def handle_escape_sequences(input_string):
-    result = []
-    i = 0
-    while i < len(input_string):
-        if input_string[i] == "\\":
-            if i + 1 < len(input_string):
-                if input_string[i + 1] in ["\\", '"', "'"]:
-                    result.append(input_string[i + 1])
-                    i += 2
-                elif input_string[i + 1] == " ":
-                    result.append(" ")
-                    i += 2
-                else:
-                    result.append("\\")
-                    i += 1
-            else:
-                result.append("\\")
-                i += 1
-        else:
-            result.append(input_string[i])
-            i += 1
-    return "".join(result)
 
 
 def exec(command: str, arguments: List[str]):
@@ -77,24 +113,7 @@ def main():
                 return_code = int(arguments[0]) if arguments else 0
                 exit(return_code)
             elif command == "echo":
-                input_string = " ".join(arguments)
-                if contains_double_quotes(input_string):
-                    quoted_parts = re.findall(r'"(.*?)(?<!\\)"', input_string)
-                    quoted_parts_double = [
-                        handle_escape_sequences(part) for part in quoted_parts
-                    ]
-                    sys.stdout.write(" ".join(quoted_parts_double) + "\n")
-                elif contains_single_quotes(input_string):
-                    quoted_parts = re.findall(r"'(.*?)(?<!\\)'", input_string)
-                    quoted_parts_single = [
-                        handle_escape_sequences(part) for part in quoted_parts
-                    ]
-                    sys.stdout.write(" ".join(quoted_parts_single) + "\n")
-                else:
-                    parsed_arguments = [
-                        handle_escape_sequences(arg) for arg in arguments
-                    ]
-                    sys.stdout.write(" ".join(parsed_arguments) + "\n")
+                sys.stdout.write(" ".join(arguments) + "\n")
             elif command == "pwd":
                 sys.stdout.write(os.getcwd())
                 sys.stdout.write("\n")
