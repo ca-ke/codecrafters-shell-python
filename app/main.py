@@ -128,56 +128,70 @@ class ExecutableFinder:
         return executables
 
 
-def exec(command: str, arguments: List[str]):
-    try:
-        if any(op in arguments for op in [">", "1>", ">>", "1>>"]):
-            redirect_position = next(
-                (
-                    i
-                    for i, arg in enumerate(arguments)
-                    if arg in [">", "1>", "1>>", ">>"]
-                ),
-                None,
-            )
-            if redirect_position is not None and redirect_position + 1 < len(arguments):
-                output_file = arguments[redirect_position + 1]
-                command_arguments = arguments[:redirect_position]
+class Command:
+    def execute(self, command: str, arguments: List[str]):
+        raise NotImplementedError("Subclasses must implement the execute method.")
 
-                operator = arguments[redirect_position]
-                file_mode = "w" if operator in [">", "1>"] else "a"
-                with open(output_file, file_mode) as file:
-                    subprocess.run(
-                        [command, *command_arguments], stdout=file, check=True
-                    )
-            else:
-                print("Error: Missing output file for redirection.", file=sys.stderr)
 
-        elif any(op in arguments for op in ["2>", "2>>"]):
-            redirect_position = next(
-                (i for i, arg in enumerate(arguments) if arg in ["2>", "2>>"]), None
-            )
-            if redirect_position is not None and redirect_position + 1 < len(arguments):
-                error_file = arguments[redirect_position + 1]
-                command_arguments = arguments[:redirect_position]
+class ErrorRedirectionCommand(Command):
+    def execute(self, command: str, arguments: List[str]):
+        redirect_position = next(
+            (i for i, arg in enumerate(arguments) if arg in ["2>", "2>>"]),
+            None,
+        )
+        if redirect_position is not None and redirect_position + 1 < len(arguments):
+            error_file = arguments[redirect_position + 1]
+            command_arguments = arguments[:redirect_position]
 
-                operator = arguments[redirect_position]
-                file_mode = "w" if operator == "2>" else "a"
-                with open(error_file, file_mode) as file:
-                    subprocess.run(
-                        [command, *command_arguments], stderr=file, check=True
-                    )
-            else:
-                print("Error: Missing error file for redirection.", file=sys.stderr)
-
+            operator = arguments[redirect_position]
+            file_mode = "w" if operator == "2>" else "a"
+            with open(error_file, file_mode) as file:
+                subprocess.run([command, *command_arguments], stderr=file, check=True)
         else:
-            subprocess.run([command, *arguments], check=True)
+            print("Error: Missing error file for redirection.", file=sys.stderr)
 
-    except Exception:
-        pass
+
+class OutputRedirectionCommand(Command):
+    def execute(self, command: str, arguments: List[str]):
+        redirect_position = next(
+            (i for i, arg in enumerate(arguments) if arg in [">", "1>", "1>>", ">>"]),
+            None,
+        )
+        if redirect_position is not None and redirect_position + 1 < len(arguments):
+            output_file = arguments[redirect_position + 1]
+            command_arguments = arguments[:redirect_position]
+
+            operator = arguments[redirect_position]
+            file_mode = "w" if operator in [">", "1>"] else "a"
+            with open(output_file, file_mode) as file:
+                subprocess.run([command, *command_arguments], stdout=file, check=True)
+        else:
+            print("Error: Missing output file for redirection.", file=sys.stderr)
+
+
+class StandardOutputCommand(Command):
+    def execute(self, command: str, arguments: List[str]):
+        subprocess.run([command, *arguments], check=True)
+
+
+class CommandExecutor:
+    def __init__(self):
+        self.standard_output_command = StandardOutputCommand()
+        self.output_redirection_command = OutputRedirectionCommand()
+        self.error_redirection_command = ErrorRedirectionCommand()
+
+    def execute(self, command: str, arguments: List[str]):
+        if any(op in arguments for op in [">", "1>", "1>>", ">>"]):
+            self.output_redirection_command.execute(command, arguments)
+        elif any(op in arguments for op in ["2>", "2>>"]):
+            self.error_redirection_command.execute(command, arguments)
+        else:
+            self.standard_output_command.execute(command, arguments)
 
 
 def main():
     executable_finder = ExecutableFinder()
+    command_executor = CommandExecutor()
 
     while True:
         builtin_commands = {"echo", "exit", "type", "pwd", "cd"}
@@ -221,7 +235,10 @@ def main():
                 directory = executables.get(command)
 
                 if directory:
-                    exec(directory + "/" + command, arguments)
+                    try:
+                        command_executor.execute(directory + "/" + command, arguments)
+                    except:
+                        pass
                 else:
                     print(f"{command}: command not found")
 
