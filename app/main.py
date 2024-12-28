@@ -114,7 +114,35 @@ def get_executables() -> Dict[str, str]:
 
 
 def exec(command: str, arguments: List[str]):
-    subprocess.run([command, *arguments])
+    contains_redirect_operator = any(
+        arg.startswith(">") or arg[0].isdigit() and arg[1:] == ">" for arg in arguments
+    )
+    if contains_redirect_operator:
+        try:
+            redirect_position = next(
+                i
+                for i, arg in enumerate(arguments)
+                if arg.startswith(">") or (arg[0].isdigit() and arg[1:] == ">")
+            )
+            output_file = arguments[redirect_position + 1]
+            command_arguments = arguments[:redirect_position]
+            for command_argument in command_arguments:
+                value = subprocess.check_output(
+                    [command, command_argument], shell=False
+                )
+                decoded_value = value.decode("utf-8")
+                with open(output_file, "w") as file:
+                    file.write(decoded_value)
+
+        except:
+            pass
+    else:
+        try:
+            subprocess.run([command, *arguments], check=True)
+        except subprocess.CalledProcessError as e:
+            sys.stderr.write(f"Command failed with return code {e.returncode}\n")
+        except Exception as e:
+            sys.stderr.write(f"An unexpected error occurred: {str(e)}\n")
 
 
 def main():
@@ -134,8 +162,6 @@ def main():
             if command == "exit":
                 return_code = int(arguments[0]) if arguments else 0
                 exit(return_code)
-            elif command == "echo":
-                sys.stdout.write(" ".join(arguments) + "\n")
             elif command == "pwd":
                 sys.stdout.write(os.getcwd())
                 sys.stdout.write("\n")
