@@ -4,7 +4,7 @@ import glob
 import subprocess
 
 from os.path import basename, expanduser, isfile
-from typing import Dict
+from typing import Dict, Optional
 from typing import List
 
 
@@ -102,15 +102,30 @@ class Tokenizer:
         return ""
 
 
-def get_executables() -> Dict[str, str]:
-    executables = {}
+class ExecutableFinder:
+    def __init__(self, path_env: Optional[str] = None):
+        """
+        Initialize the ExecutableFinder with an optional PATH environment variable.
 
-    for directory in os.environ["PATH"].split(":"):
-        for executable in glob.glob(directory + "/*"):
-            if isfile(executable) and basename(executable) not in executables:
-                if os.access(executable, os.X_OK):
-                    executables[basename(executable)] = directory
-    return executables
+        :param path_env: A string representing the PATH environment variable. Defaults to os.environ["PATH"].
+        """
+        self.path_env = path_env or os.environ.get("PATH", "")
+
+    def get_executables(self) -> Dict[str, str]:
+        """
+        Finds all executables in the directories listed in the PATH environment variable.
+
+        :return: A dictionary where keys are executable names and values are their directories.
+        """
+        executables = {}
+
+        for directory in self.path_env.split(":"):
+            for executable in glob.glob(directory + "/*"):
+                if isfile(executable) and basename(executable) not in executables:
+                    if os.access(executable, os.X_OK):
+                        executables[basename(executable)] = directory
+
+        return executables
 
 
 def exec(command: str, arguments: List[str]):
@@ -162,11 +177,13 @@ def exec(command: str, arguments: List[str]):
 
 
 def main():
+    executable_finder = ExecutableFinder()
+
     while True:
         builtin_commands = {"echo", "exit", "type", "pwd", "cd"}
         line = input("$ ")
         tokenizer = Tokenizer(line).parse()
-        executables = get_executables()
+        executables = executable_finder.get_executables()
 
         if not line:
             sys.stdout.write("You shall not pass!")
