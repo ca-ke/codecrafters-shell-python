@@ -115,14 +115,22 @@ def get_executables() -> Dict[str, str]:
 
 def exec(command: str, arguments: List[str]):
     try:
-        if ">" in arguments or "1>" in arguments:
+        if any(op in arguments for op in [">", "1>", ">>", "1>>"]):
             redirect_position = next(
-                (i for i, arg in enumerate(arguments) if arg in [">", "1>"]), None
+                (
+                    i
+                    for i, arg in enumerate(arguments)
+                    if arg in [">", "1>", "1>>", ">>"]
+                ),
+                None,
             )
             if redirect_position is not None and redirect_position + 1 < len(arguments):
                 output_file = arguments[redirect_position + 1]
                 command_arguments = arguments[:redirect_position]
-                with open(output_file, "w") as file:
+
+                operator = arguments[redirect_position]
+                file_mode = "w" if operator in [">", "1>"] else "a"
+                with open(output_file, file_mode) as file:
                     subprocess.run(
                         [command, *command_arguments], stdout=file, check=True
                     )
