@@ -189,58 +189,70 @@ class CommandExecutor:
             self.standard_output_command.execute(command, arguments)
 
 
+def handle_cd(arguments: List[str]):
+    if arguments:
+        directory = arguments[0]
+        try:
+            os.chdir(expanduser(directory))
+        except FileNotFoundError:
+            print(f"cd: {directory}: No such file or directory")
+    else:
+        print("cd: missing operand")
+
+
+def handle_type(arguments: List[str], executable_finder: ExecutableFinder):
+    """Handle the 'type' command."""
+    if arguments:
+        target = arguments[0]
+        builtin_commands = {"echo", "exit", "type", "pwd", "cd"}
+        executables = executable_finder.get_executables()
+
+        if target in builtin_commands:
+            print(f"{target} is a shell builtin")
+        else:
+            directory = executables.get(target)
+            if directory:
+                print(f"{target} is {directory}/{target}")
+            else:
+                print(f"{target}: not found")
+    else:
+        print("type: missing operand")
+
+
 def main():
     executable_finder = ExecutableFinder()
     command_executor = CommandExecutor()
+    builtins = {
+        "exit": lambda args: sys.exit(int(args[0]) if args else 0),
+        "pwd": lambda _: print(os.getcwd()),
+        "cd": lambda args: handle_cd(args),
+        "type": lambda args: handle_type(args, executable_finder),
+    }
 
     while True:
-        builtin_commands = {"echo", "exit", "type", "pwd", "cd"}
-        line = input("$ ")
-        tokenizer = Tokenizer(line).parse()
-        executables = executable_finder.get_executables()
-
+        line = input("$ ").strip()
         if not line:
-            sys.stdout.write("You shall not pass!")
+            print("You shall not pass!")
+            continue
+
+        tokenizer = Tokenizer(line).parse()
+        command, arguments = tokenizer[0], tokenizer[1:]
+
+        if command in builtins:
+            try:
+                builtins[command](arguments)
+            except Exception as e:
+                print(f"Error: {e}")
         else:
-            command, arguments = (
-                tokenizer[0],
-                tokenizer[1:],
-            )
-            if command == "exit":
-                return_code = int(arguments[0]) if arguments else 0
-                exit(return_code)
-            elif command == "pwd":
-                sys.stdout.write(os.getcwd())
-                sys.stdout.write("\n")
-            elif command == "cd":
-                directory = arguments[0]
+            executables = executable_finder.get_executables()
+            directory = executables.get(command)
+            if directory:
                 try:
-                    os.chdir(expanduser(directory))
-                except FileNotFoundError:
-                    sys.stdout.write(f"cd: {directory}: No such file or directory")
-                    sys.stdout.write("\n")
-            elif command == "type":
-                target = arguments[0]
-                if target in builtin_commands:
-                    sys.stdout.write(f"{target} is a shell builtin")
-                    sys.stdout.write("\n")
-                else:
-                    directory = executables.get(target)
-
-                    if directory:
-                        print(f"{target} is {directory}/{target}")
-                    else:
-                        print(f"{target}: not found")
+                    command_executor.execute(f"{directory}/{command}", arguments)
+                except:
+                    pass
             else:
-                directory = executables.get(command)
-
-                if directory:
-                    try:
-                        command_executor.execute(directory + "/" + command, arguments)
-                    except:
-                        pass
-                else:
-                    print(f"{command}: command not found")
+                print(f"{command}: command not found")
 
 
 if __name__ == "__main__":
