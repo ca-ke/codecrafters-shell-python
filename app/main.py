@@ -137,14 +137,17 @@ def exec(command: str, arguments: List[str]):
             else:
                 print("Error: Missing output file for redirection.", file=sys.stderr)
 
-        elif "2>" in arguments:
+        elif any(op in arguments for op in ["2>", "2>>"]):
             redirect_position = next(
-                (i for i, arg in enumerate(arguments) if arg == "2>"), None
+                (i for i, arg in enumerate(arguments) if arg in ["2>", "2>>"]), None
             )
             if redirect_position is not None and redirect_position + 1 < len(arguments):
                 error_file = arguments[redirect_position + 1]
                 command_arguments = arguments[:redirect_position]
-                with open(error_file, "w") as file:
+
+                operator = arguments[redirect_position]
+                file_mode = "w" if operator == "2>" else "a"
+                with open(error_file, file_mode) as file:
                     subprocess.run(
                         [command, *command_arguments], stderr=file, check=True
                     )
