@@ -1,15 +1,20 @@
 import sys
 import os
 import glob
-import re
+import subprocess
 
 from os.path import basename, expanduser, isfile
 from typing import Dict
-from subprocess import call
 from typing import List
 
 
 class Tokenizer:
+    """
+    A simple tokenizer that splits a line into tokens separated by whitespace,
+    while allowing quoted strings with single or double quotes and handling
+    backslash escapes for certain characters.
+    """
+
     def __init__(self, line: str):
         self.line = line
         self.position = 0
@@ -18,6 +23,10 @@ class Tokenizer:
         self.current_token_chars = []
 
     def parse(self) -> List[str]:
+        """
+        Parse the input line into tokens. Returns a list of strings, each one
+        representing a token.
+        """
         tokens = []
         while self.position < len(self.line):
             char = self.line[self.position]
@@ -28,50 +37,64 @@ class Tokenizer:
                     self.in_single_quotes = False
                 else:
                     self.current_token_chars.append(char)
-
             elif self.in_double_quotes:
                 if char == '"':
                     self.in_double_quotes = False
                 elif char == "\\":
-                    if self._peek() in ['"', "\\", "$"]:
-                        escaped_char = self._next_char()
-                        self.current_token_chars.append(escaped_char)
-                    else:
-                        self.current_token_chars.append(char)
+                    escaped = self._handle_escape_in_quotes()
+                    self.current_token_chars.append(escaped)
                 else:
                     self.current_token_chars.append(char)
-
             else:
                 if char == "'":
                     self.in_single_quotes = True
                 elif char == '"':
                     self.in_double_quotes = True
+                elif char.isspace():
+                    self._finalize_token(tokens)
                 elif char == "\\":
                     if self._peek():
                         self.current_token_chars.append(self._next_char())
                     else:
                         self.current_token_chars.append(char)
-                elif char.isspace():
-                    self._finalize_token(tokens)
                 else:
                     self.current_token_chars.append(char)
 
         self._finalize_token(tokens)
         return tokens
 
+    def _handle_escape_in_quotes(self) -> str:
+        """
+        Handles backslash escapes when inside double quotes.
+        """
+        next_ch = self._peek()
+        if next_ch in ['"', "\\", "$"]:
+            return self._next_char()
+        return "\\"
+
     def _finalize_token(self, tokens: List[str]):
+        """
+        If the current token buffer is not empty, join its characters and
+        append to the list of tokens, then reset the buffer.
+        """
         if self.current_token_chars:
             tokens.append("".join(self.current_token_chars))
             self.current_token_chars = []
 
     def _peek(self) -> str:
-        """Look at the next character without advancing position."""
+        """
+        Look at the next character without advancing position.
+        Returns an empty string if we're at the end.
+        """
         if self.position < len(self.line):
             return self.line[self.position]
         return ""
 
     def _next_char(self) -> str:
-        """Consume and return the next character in the string."""
+        """
+        Consume and return the next character in the string.
+        Returns an empty string if we're at the end.
+        """
         if self.position < len(self.line):
             ch = self.line[self.position]
             self.position += 1
@@ -91,8 +114,7 @@ def get_executables() -> Dict[str, str]:
 
 
 def exec(command: str, arguments: List[str]):
-    arguments_stringfied = " ".join(arguments)
-    call(f"{command} {arguments_stringfied}", shell=True)
+    subprocess.run([command, *arguments])
 
 
 def main():
