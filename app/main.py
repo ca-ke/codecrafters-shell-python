@@ -157,7 +157,7 @@ def exec(command: str, arguments: List[str]):
         else:
             subprocess.run([command, *arguments], check=True)
 
-    except Exception as e:
+    except Exception:
         pass
 
 
