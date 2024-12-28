@@ -114,35 +114,40 @@ def get_executables() -> Dict[str, str]:
 
 
 def exec(command: str, arguments: List[str]):
-    contains_redirect_operator = any(
-        arg.startswith(">") or arg[0].isdigit() and arg[1:] == ">" for arg in arguments
-    )
-    if contains_redirect_operator:
-        try:
+    try:
+        if ">" in arguments or "1>" in arguments:
             redirect_position = next(
-                i
-                for i, arg in enumerate(arguments)
-                if arg.startswith(">") or (arg[0].isdigit() and arg[1:] == ">")
+                (i for i, arg in enumerate(arguments) if arg in [">", "1>"]), None
             )
-            output_file = arguments[redirect_position + 1]
-            command_arguments = arguments[:redirect_position]
-            for command_argument in command_arguments:
-                value = subprocess.check_output(
-                    [command, command_argument], shell=False
-                )
-                decoded_value = value.decode("utf-8")
+            if redirect_position is not None and redirect_position + 1 < len(arguments):
+                output_file = arguments[redirect_position + 1]
+                command_arguments = arguments[:redirect_position]
                 with open(output_file, "w") as file:
-                    file.write(decoded_value)
+                    subprocess.run(
+                        [command, *command_arguments], stdout=file, check=True
+                    )
+            else:
+                print("Error: Missing output file for redirection.", file=sys.stderr)
 
-        except:
-            pass
-    else:
-        try:
+        elif "2>" in arguments:
+            redirect_position = next(
+                (i for i, arg in enumerate(arguments) if arg == "2>"), None
+            )
+            if redirect_position is not None and redirect_position + 1 < len(arguments):
+                error_file = arguments[redirect_position + 1]
+                command_arguments = arguments[:redirect_position]
+                with open(error_file, "w") as file:
+                    subprocess.run(
+                        [command, *command_arguments], stderr=file, check=True
+                    )
+            else:
+                print("Error: Missing error file for redirection.", file=sys.stderr)
+
+        else:
             subprocess.run([command, *arguments], check=True)
-        except subprocess.CalledProcessError as e:
-            sys.stderr.write(f"Command failed with return code {e.returncode}\n")
-        except Exception as e:
-            sys.stderr.write(f"An unexpected error occurred: {str(e)}\n")
+
+    except Exception as e:
+        pass
 
 
 def main():
