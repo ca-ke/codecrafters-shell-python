@@ -27,7 +27,7 @@ class AutoCompleter:
             if current_word:
                 self.matches = sorted(
                     [
-                        command + " "
+                        command
                         for command in self.commands
                         if command.startswith(current_word)
                     ]
