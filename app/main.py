@@ -2,10 +2,43 @@ import sys
 import os
 import glob
 import subprocess
+import readline
 
 from os.path import basename, expanduser, isfile
-from typing import Dict
+from typing import Dict, Optional
 from typing import List
+
+
+class AutoCompleter:
+    def __init__(self, builtins: dict, executables: dict):
+        readline.parse_and_bind("tab: complete")
+        readline.set_completer(self.completer)
+
+        self.matches = []
+        self.commands = sorted(
+            set(list(builtins.keys()) + list(executables.keys())),
+            key=lambda x: (len(x), x),
+        )
+
+    def completer(self, text, state):
+        current_word = text.split(" ")[-1]
+
+        if state == 0:
+            if current_word:
+                self.matches = sorted(
+                    [
+                        command + " "
+                        for command in self.commands
+                        if command.startswith(current_word)
+                    ]
+                )
+            else:
+                self.matches = self.commands
+
+        try:
+            return self.matches[state]
+        except IndexError:
+            return None
 
 
 class Tokenizer:
@@ -102,111 +135,158 @@ class Tokenizer:
         return ""
 
 
-def get_executables() -> Dict[str, str]:
-    executables = {}
+class ExecutableFinder:
+    def __init__(self, path_env: Optional[str] = None):
+        """
+        Initialize the ExecutableFinder with an optional PATH environment variable.
 
-    for directory in os.environ["PATH"].split(":"):
-        for executable in glob.glob(directory + "/*"):
-            if isfile(executable) and basename(executable) not in executables:
-                if os.access(executable, os.X_OK):
-                    executables[basename(executable)] = directory
-    return executables
+        :param path_env: A string representing the PATH environment variable. Defaults to os.environ["PATH"].
+        """
+        self.path_env = path_env or os.environ.get("PATH", "")
+
+    def get_executables(self) -> Dict[str, str]:
+        """
+        Finds all executables in the directories listed in the PATH environment variable.
+
+        :return: A dictionary where keys are executable names and values are their directories.
+        """
+        executables = {}
+
+        for directory in self.path_env.split(":"):
+            for executable in glob.glob(directory + "/*"):
+                if isfile(executable) and basename(executable) not in executables:
+                    if os.access(executable, os.X_OK):
+                        executables[basename(executable)] = directory
+
+        return executables
 
 
-def exec(command: str, arguments: List[str]):
-    try:
-        if any(op in arguments for op in [">", "1>", ">>", "1>>"]):
-            redirect_position = next(
-                (
-                    i
-                    for i, arg in enumerate(arguments)
-                    if arg in [">", "1>", "1>>", ">>"]
-                ),
-                None,
-            )
-            if redirect_position is not None and redirect_position + 1 < len(arguments):
-                output_file = arguments[redirect_position + 1]
-                command_arguments = arguments[:redirect_position]
+class Command:
+    def execute(self, command: str, arguments: List[str]):
+        raise NotImplementedError("Subclasses must implement the execute method.")
 
-                operator = arguments[redirect_position]
-                file_mode = "w" if operator in [">", "1>"] else "a"
-                with open(output_file, file_mode) as file:
-                    subprocess.run(
-                        [command, *command_arguments], stdout=file, check=True
-                    )
-            else:
-                print("Error: Missing output file for redirection.", file=sys.stderr)
 
-        elif any(op in arguments for op in ["2>", "2>>"]):
-            redirect_position = next(
-                (i for i, arg in enumerate(arguments) if arg in ["2>", "2>>"]), None
-            )
-            if redirect_position is not None and redirect_position + 1 < len(arguments):
-                error_file = arguments[redirect_position + 1]
-                command_arguments = arguments[:redirect_position]
+class ErrorRedirectionCommand(Command):
+    def execute(self, command: str, arguments: List[str]):
+        redirect_position = next(
+            (i for i, arg in enumerate(arguments) if arg in ["2>", "2>>"]),
+            None,
+        )
+        if redirect_position is not None and redirect_position + 1 < len(arguments):
+            error_file = arguments[redirect_position + 1]
+            command_arguments = arguments[:redirect_position]
 
-                operator = arguments[redirect_position]
-                file_mode = "w" if operator == "2>" else "a"
-                with open(error_file, file_mode) as file:
-                    subprocess.run(
-                        [command, *command_arguments], stderr=file, check=True
-                    )
-            else:
-                print("Error: Missing error file for redirection.", file=sys.stderr)
-
+            operator = arguments[redirect_position]
+            file_mode = "w" if operator == "2>" else "a"
+            with open(error_file, file_mode) as file:
+                subprocess.run([command, *command_arguments], stderr=file, check=True)
         else:
-            subprocess.run([command, *arguments], check=True)
+            print("Error: Missing error file for redirection.", file=sys.stderr)
 
-    except Exception as e:
-        pass
+
+class OutputRedirectionCommand(Command):
+    def execute(self, command: str, arguments: List[str]):
+        redirect_position = next(
+            (i for i, arg in enumerate(arguments) if arg in [">", "1>", "1>>", ">>"]),
+            None,
+        )
+        if redirect_position is not None and redirect_position + 1 < len(arguments):
+            output_file = arguments[redirect_position + 1]
+            command_arguments = arguments[:redirect_position]
+
+            operator = arguments[redirect_position]
+            file_mode = "w" if operator in [">", "1>"] else "a"
+            with open(output_file, file_mode) as file:
+                subprocess.run([command, *command_arguments], stdout=file, check=True)
+        else:
+            print("Error: Missing output file for redirection.", file=sys.stderr)
+
+
+class StandardOutputCommand(Command):
+    def execute(self, command: str, arguments: List[str]):
+        subprocess.run([command, *arguments], check=True)
+
+
+class CommandExecutor:
+    def __init__(self):
+        self.standard_output_command = StandardOutputCommand()
+        self.output_redirection_command = OutputRedirectionCommand()
+        self.error_redirection_command = ErrorRedirectionCommand()
+
+    def execute(self, command: str, arguments: List[str]):
+        if any(op in arguments for op in [">", "1>", "1>>", ">>"]):
+            self.output_redirection_command.execute(command, arguments)
+        elif any(op in arguments for op in ["2>", "2>>"]):
+            self.error_redirection_command.execute(command, arguments)
+        else:
+            self.standard_output_command.execute(command, arguments)
+
+
+def handle_cd(arguments: List[str]):
+    if arguments:
+        directory = arguments[0]
+        try:
+            os.chdir(expanduser(directory))
+        except FileNotFoundError:
+            print(f"cd: {directory}: No such file or directory")
+    else:
+        print("cd: missing operand")
+
+
+def handle_type(arguments: List[str], executable_finder: ExecutableFinder):
+    """Handle the 'type' command."""
+    if arguments:
+        target = arguments[0]
+        builtin_commands = {"echo", "exit", "type", "pwd", "cd"}
+        executables = executable_finder.get_executables()
+
+        if target in builtin_commands:
+            print(f"{target} is a shell builtin")
+        else:
+            directory = executables.get(target)
+            if directory:
+                print(f"{target} is {directory}/{target}")
+            else:
+                print(f"{target}: not found")
+    else:
+        print("type: missing operand")
 
 
 def main():
+    executable_finder = ExecutableFinder()
+    command_executor = CommandExecutor()
+    builtins = {
+        "exit": lambda args: sys.exit(int(args[0]) if args else 0),
+        "pwd": lambda _: print(os.getcwd()),
+        "cd": lambda args: handle_cd(args),
+        "type": lambda args: handle_type(args, executable_finder),
+    }
+
+    AutoCompleter(builtins=builtins, executables=executable_finder.get_executables())
     while True:
-        builtin_commands = {"echo", "exit", "type", "pwd", "cd"}
-        line = input("$ ")
-        tokenizer = Tokenizer(line).parse()
-        executables = get_executables()
-
+        line = input("$ ").strip()
         if not line:
-            sys.stdout.write("You shall not pass!")
+            print("You shall not pass!")
+            continue
+
+        tokenizer = Tokenizer(line).parse()
+        command, arguments = tokenizer[0], tokenizer[1:]
+
+        if command in builtins:
+            try:
+                builtins[command](arguments)
+            except Exception as e:
+                print(f"Error: {e}")
         else:
-            command, arguments = (
-                tokenizer[0],
-                tokenizer[1:],
-            )
-            if command == "exit":
-                return_code = int(arguments[0]) if arguments else 0
-                exit(return_code)
-            elif command == "pwd":
-                sys.stdout.write(os.getcwd())
-                sys.stdout.write("\n")
-            elif command == "cd":
-                directory = arguments[0]
+            executables = executable_finder.get_executables()
+            directory = executables.get(command)
+            if directory:
                 try:
-                    os.chdir(expanduser(directory))
-                except FileNotFoundError:
-                    sys.stdout.write(f"cd: {directory}: No such file or directory")
-                    sys.stdout.write("\n")
-            elif command == "type":
-                target = arguments[0]
-                if target in builtin_commands:
-                    sys.stdout.write(f"{target} is a shell builtin")
-                    sys.stdout.write("\n")
-                else:
-                    directory = executables.get(target)
-
-                    if directory:
-                        print(f"{target} is {directory}/{target}")
-                    else:
-                        print(f"{target}: not found")
+                    command_executor.execute(command, arguments)
+                except:
+                    pass
             else:
-                directory = executables.get(command)
-
-                if directory:
-                    exec(directory + "/" + command, arguments)
-                else:
-                    print(f"{command}: command not found")
+                print(f"{command}: command not found")
 
 
 if __name__ == "__main__":
