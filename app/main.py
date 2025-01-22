@@ -32,8 +32,6 @@ class AutoCompleter:
                         if command.startswith(current_word)
                     ]
                 )
-            else:
-                self.matches = self.commands
 
         try:
             return self.matches[state]
