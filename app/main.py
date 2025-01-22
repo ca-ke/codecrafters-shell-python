@@ -2,10 +2,40 @@ import sys
 import os
 import glob
 import subprocess
+import readline
 
 from os.path import basename, expanduser, isfile
 from typing import Dict, Optional
 from typing import List
+
+
+class AutoCompleter:
+    def __init__(self, builtins: dict):
+        readline.parse_and_bind("tab: complete")
+        readline.set_completer(self.completer)
+
+        self.matches = []
+        self.builtins = builtins
+
+    def completer(self, text, state):
+        current_word = text.split(" ")[-1]
+
+        if state == 0:
+            if current_word:
+                self.matches = sorted(
+                    [
+                        command + " "
+                        for command in self.builtins.keys()
+                        if command.startswith(current_word)
+                    ]
+                )
+            else:
+                self.matches = sorted(self.builtins.keys())
+
+        try:
+            return self.matches[state]
+        except IndexError:
+            return None
 
 
 class Tokenizer:
@@ -219,6 +249,10 @@ def handle_type(arguments: List[str], executable_finder: ExecutableFinder):
         print("type: missing operand")
 
 
+def handle_echo(arguments: List[str]):
+    sys.stdout.write(" ".join(arguments) + "\n")
+
+
 def main():
     executable_finder = ExecutableFinder()
     command_executor = CommandExecutor()
@@ -227,8 +261,10 @@ def main():
         "pwd": lambda _: print(os.getcwd()),
         "cd": lambda args: handle_cd(args),
         "type": lambda args: handle_type(args, executable_finder),
+        "echo": lambda args: handle_echo(args),
     }
 
+    AutoCompleter(builtins=builtins)
     while True:
         line = input("$ ").strip()
         if not line:
