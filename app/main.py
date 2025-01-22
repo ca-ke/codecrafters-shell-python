@@ -2,10 +2,42 @@ import sys
 import os
 import glob
 import subprocess
+import readline
 
 from os.path import basename, expanduser, isfile
 from typing import Dict, Optional
 from typing import List
+
+
+class AutoCompleter:
+    def __init__(self, builtins: dict, executables: List[str]):
+        readline.parse_and_bind("tab: complete")
+        readline.set_completer(self.completer)
+
+        self.matches = []
+        self.commands = sorted(
+            set(list(builtins.keys()) + executables), key=lambda x: (len(x), x)
+        )
+
+    def completer(self, text, state):
+        current_word = text.split(" ")[-1]
+
+        if state == 0:
+            if current_word:
+                self.matches = sorted(
+                    [
+                        command + " "
+                        for command in self.commands
+                        if command.startswith(current_word)
+                    ]
+                )
+            else:
+                self.matches = self.commands
+
+        try:
+            return self.matches[state]
+        except IndexError:
+            return None
 
 
 class Tokenizer:
@@ -229,6 +261,9 @@ def main():
         "type": lambda args: handle_type(args, executable_finder),
     }
 
+    AutoCompleter(
+        builtins=builtins, executables=sys.executable_finder.get_executables()
+    )
     while True:
         line = input("$ ").strip()
         if not line:
