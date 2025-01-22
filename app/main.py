@@ -12,7 +12,7 @@ from typing import List
 class AutoCompleter:
     def __init__(self, builtins: dict, executables: dict):
         readline.parse_and_bind("tab: complete")
-        readline.set_completer(self.completer)
+        readline.set_completer(self._completer)
 
         self.matches = []
         self.commands = sorted(
@@ -20,23 +20,41 @@ class AutoCompleter:
             key=lambda x: (len(x), x),
         )
 
-    def completer(self, text, state):
-        current_word = text.split(" ")[-1]
-
+    def _completer(self, text: str, state: int) -> str | None:
         if state == 0:
-            if current_word:
-                self.matches = sorted(
-                    [
-                        command + " "
-                        for command in self.commands
-                        if command.startswith(current_word)
-                    ]
-                )
+            self.matches = [
+                command + " " for command in self.commands if command.startswith(text)
+            ]
+
+            if len(self.matches) > 1:
+                lcp = self._get_longest_common_prefix(self.matches)
+
+                if len(lcp) > len(text):
+                    return lcp
+                else:
+                    sys.stdout.write(f"\n{' '.join(self.matches)}\n")
+                    sys.stdout.write(f"$ {text}")
+                    return None
 
         try:
-            return self.matches[state]
+            value = self.matches[state]
+            return value
         except IndexError:
             return None
+
+    def _get_longest_common_prefix(self, strings: list[str]) -> str:
+        if not strings:
+            return ""
+
+        prefix = strings[0]
+
+        for s in strings[1:]:
+            while not s.startswith(prefix):
+                prefix = prefix[:-1]
+                if not prefix:
+                    return ""
+
+        return prefix
 
 
 class Tokenizer:
