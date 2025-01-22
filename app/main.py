@@ -33,6 +33,9 @@ class AutoCompleter:
                     ]
                 )
 
+                if len(self.matches) > 1:
+                    sys.stdout.write(f"\n{' '.join(self.matches)}")
+                    return
         try:
             return self.matches[state]
         except IndexError:
